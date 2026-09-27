@@ -1,3 +1,5 @@
-0 Izquierda
-1 Arriba
-2 Derecha
+0 Feliz
+1 Triste
+2 Enojado
+3 Sorprendido
+4 Nada
