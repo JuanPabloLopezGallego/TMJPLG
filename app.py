@@ -1,16 +1,17 @@
 import streamlit as st
-from PIL import Image
-import base64
-import io
+import cv2
+import numpy as np
+from PIL import Image as Image, ImageOps as ImagOps
+from keras.models import load_model
+import platform
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURACIÓN
 # ═══════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="Portafolio · Interfaces Multimodales",
-    page_icon="✨",
-    layout="wide",
-    initial_sidebar_state="collapsed",
+    page_title="Detector de Emociones",
+    page_icon="😊",
+    layout="centered",
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -18,557 +19,686 @@ st.set_page_config(
 # ═══════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Nunito:wght@400;500;600;700;800&display=swap');
 
     :root {
-        --bg: #f7f4ed;
-        --paper: #ffffff;
-        --ink: #14120e;
-        --muted: #7a7468;
-        --muted-2: #a8a196;
-        --border: #eae6dd;
-        --accent: #ff5a36;
-        --accent-soft: #fff0eb;
+        --bg: #fef9f3;
+        --card: #ffffff;
+        --text: #2d2a26;
+        --muted: #8a8078;
+        --coral: #ff6b6b;
+        --coral-soft: #ffe5e5;
     }
 
     html, body, [class*="css"], .stApp {
-        font-family: 'Inter', sans-serif !important;
-        color: var(--ink);
-    }
-
-    h1, h2, h3, h4, h5 {
-        font-family: 'Instrument Serif', serif !important;
-        font-weight: 600 !important;
-        letter-spacing: -0.015em !important;
-        color: var(--ink) !important;
+        font-family: 'Nunito', sans-serif !important;
+        color: var(--text) !important;
     }
 
     .stApp {
         background-color: var(--bg) !important;
         background-image:
-            radial-gradient(circle at 12% -5%, rgba(255, 90, 54, 0.09), transparent 42%),
-            radial-gradient(circle at 88% 105%, rgba(255, 200, 100, 0.12), transparent 42%);
+            radial-gradient(circle at 8% 0%, rgba(255, 214, 165, 0.45), transparent 42%),
+            radial-gradient(circle at 92% 100%, rgba(124, 198, 255, 0.22), transparent 45%),
+            radial-gradient(circle at 50% 50%, rgba(255, 182, 193, 0.10), transparent 60%);
         background-attachment: fixed;
     }
 
-    /* Ocultar chrome de Streamlit */
-    #MainMenu { visibility: hidden; }
-    footer { visibility: hidden; }
-    header[data-testid="stHeader"] { background: transparent; }
-
-    .block-container {
-        padding-top: 3rem !important;
-        padding-bottom: 3rem !important;
-        max-width: 1280px !important;
-    }
-
     /* ═══ HERO ═══ */
-    .hero-kicker {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.6rem;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.72rem;
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-        color: var(--accent);
-        font-weight: 500;
-        margin-bottom: 1.2rem;
-    }
-    .hero-kicker::before {
-        content: '';
+    .hero { text-align: center; padding: 0.5rem 0 1.75rem 0; }
+    .hero-badge {
         display: inline-block;
-        width: 24px;
-        height: 2px;
-        background: var(--accent);
+        background: var(--coral-soft); color: var(--coral);
+        padding: 0.4rem 1rem; border-radius: 100px;
+        font-size: 0.72rem; font-weight: 800;
+        letter-spacing: 0.14em; text-transform: uppercase;
+        margin-bottom: 0.9rem;
     }
-    .hero-title {
-        font-family: 'Instrument Serif', serif !important;
-        font-size: 3.4rem !important;
-        line-height: 1.02 !important;
-        letter-spacing: -0.025em !important;
-        font-weight: 600 !important;
-        margin: 0 0 1.25rem 0 !important;
-        color: var(--ink) !important;
+    .hero h1 {
+        font-family: 'Fraunces', serif !important;
+        font-size: 3rem !important; font-weight: 700 !important;
+        color: var(--text) !important;
+        margin: 0 0 0.55rem 0 !important;
+        line-height: 1.05 !important; letter-spacing: -0.02em !important;
     }
-    .hero-title em {
-        font-style: italic;
-        color: var(--accent);
-        font-weight: 400;
-    }
-    .hero-desc {
-        font-size: 1.08rem;
-        line-height: 1.65;
-        color: var(--muted);
-        margin: 0 0 1.75rem 0;
-        max-width: 580px;
-    }
-    .hero-desc strong {
-        color: var(--ink);
-        font-weight: 600;
-    }
+    .hero h1 em { font-style: italic; color: var(--coral); }
+    .hero p { color: var(--muted) !important; font-size: 1.05rem !important; margin: 0 !important; }
 
-    /* Chips */
-    .chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.55rem;
-    }
-    .chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        background: #ffffff;
-        border: 1px solid var(--border);
-        border-radius: 100px;
-        padding: 0.5rem 0.95rem;
-        font-size: 0.83rem;
-        font-weight: 500;
-        color: var(--ink);
-        transition: all 0.2s ease;
-        white-space: nowrap;
-    }
-    .chip:hover {
-        border-color: var(--accent);
-        color: var(--accent);
-        transform: translateY(-2px);
-    }
-
-    /* Retrato */
-    .portrait-wrap {
-        text-align: center;
-        padding: 1rem 0;
-    }
-    .portrait-frame {
-        background: var(--paper);
-        border: 2px solid var(--ink);
-        border-radius: 28px;
-        padding: 1.25rem;
-        box-shadow: 10px 10px 0 var(--accent);
-        transform: rotate(-2.5deg);
-        transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-        display: inline-block;
-        width: 100%;
-        max-width: 340px;
-    }
-    .portrait-frame:hover {
-        transform: rotate(0deg) translateY(-4px);
-        box-shadow: 14px 14px 0 var(--accent);
-    }
-    .portrait-frame img {
-        width: 100%;
-        display: block;
-        border-radius: 14px;
-    }
-    .portrait-fallback {
-        aspect-ratio: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 7rem;
-        border-radius: 14px;
-        background: #fff8ec;
-    }
-    .portrait-caption {
-        margin-top: 1.5rem;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.7rem;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--muted);
-    }
-
-    /* ═══ SECCIONES ═══ */
-    .section-head {
+    /* ═══ TIP PROMINENTE ANTES DE LA CÁMARA ═══ */
+    .pro-tip {
         display: flex;
         align-items: flex-start;
-        gap: 1.5rem;
-        padding: 3rem 0 1.75rem 0;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 2rem;
+        gap: 1rem;
+        background: linear-gradient(135deg, #fff5e6 0%, #fffefb 100%);
+        border: 1.5px solid #ffe0b3;
+        border-left: 5px solid #f59e0b;
+        border-radius: 16px;
+        padding: 1.1rem 1.3rem;
+        margin: 0 0 1.25rem 0;
+        box-shadow: 0 4px 16px rgba(245, 158, 11, 0.08);
     }
-    .section-num {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.8rem;
-        font-weight: 500;
-        color: var(--accent);
-        padding-top: 0.55rem;
-        min-width: 32px;
+    .pro-tip .icon {
+        font-size: 1.8rem;
+        line-height: 1;
+        flex-shrink: 0;
     }
-    .section-title {
-        font-family: 'Instrument Serif', serif !important;
-        font-size: 2.2rem !important;
-        font-weight: 600 !important;
-        line-height: 1 !important;
-        margin: 0 0 0.35rem 0 !important;
-        color: var(--ink) !important;
-    }
-    .section-sub {
+    .pro-tip .body { flex: 1; }
+    .pro-tip .title {
+        font-weight: 800;
         font-size: 0.95rem;
-        color: var(--muted);
-        margin: 0;
-        font-weight: 400;
+        color: #7c5f1c;
+        margin-bottom: 0.35rem;
+        letter-spacing: 0.01em;
     }
-
-    /* ═══ TARJETAS DE APP ═══ */
-    .app-card {
-        display: block !important;
-        background: var(--paper);
-        border: 1px solid var(--border);
-        border-radius: 22px;
-        overflow: hidden;
-        text-decoration: none !important;
-        color: var(--ink) !important;
-        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-        height: 100%;
-        margin-bottom: 0.5rem;
-        box-shadow: 0 1px 2px rgba(20, 18, 14, 0.02);
-    }
-    .app-card:hover {
-        border-color: var(--accent);
-        transform: translateY(-8px);
-        box-shadow:
-            0 24px 48px -12px rgba(20, 18, 14, 0.12),
-            0 8px 16px -8px rgba(255, 90, 54, 0.15);
-        text-decoration: none !important;
-        color: var(--ink) !important;
-    }
-    .app-card-image {
-        background: linear-gradient(135deg, #f5f1e8, #faf7f0);
-        padding: 1.5rem;
-        aspect-ratio: 16/10;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        border-bottom: 1px solid var(--border);
-    }
-    .app-card-image img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-        display: block;
-        border-radius: 8px;
-        transition: transform 0.4s ease;
-    }
-    .app-card:hover .app-card-image img {
-        transform: scale(1.06);
-    }
-    .app-card-body {
-        padding: 1.35rem 1.4rem 1.5rem 1.4rem;
-    }
-    .app-tag {
-        display: inline-block;
-        background: var(--accent-soft);
-        color: var(--accent);
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.63rem;
+    .pro-tip .text {
+        font-size: 0.9rem;
+        color: #8a6d3b;
+        line-height: 1.55;
         font-weight: 500;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        padding: 0.28rem 0.65rem;
-        border-radius: 100px;
-        margin-bottom: 0.85rem;
     }
-    .app-title {
-        font-family: 'Instrument Serif', serif !important;
-        font-size: 1.45rem !important;
-        font-weight: 600 !important;
-        line-height: 1.1 !important;
-        margin: 0 0 0.55rem 0 !important;
-        color: var(--ink) !important;
-        letter-spacing: -0.015em !important;
+    .pro-tip .text b { color: #7c5f1c; font-weight: 800; }
+
+    /* ═══ CAMERA INPUT ═══ */
+    [data-testid="stCameraInput"] {
+        background: #ffffff !important;
+        border: 2px dashed #ecdcc8 !important;
+        border-radius: 24px !important;
+        padding: 1.4rem !important;
+        box-shadow: 0 8px 32px rgba(255, 107, 107, 0.07) !important;
     }
-    .app-desc {
-        font-size: 0.88rem;
-        line-height: 1.6;
-        color: var(--muted);
-        margin: 0 0 1.15rem 0;
+    [data-testid="stCameraInput"] button {
+        background: linear-gradient(135deg, #ff6b6b, #ff8e53) !important;
+        color: #ffffff !important; border: none !important;
+        border-radius: 14px !important;
+        font-family: 'Nunito', sans-serif !important;
+        font-weight: 800 !important; font-size: 0.95rem !important;
+        padding: 0.7rem 1.6rem !important;
+        box-shadow: 0 4px 16px rgba(255, 107, 107, 0.35) !important;
+        transition: all 0.2s ease !important;
     }
-    .app-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        font-size: 0.83rem;
-        font-weight: 600;
-        color: var(--accent);
-        transition: gap 0.2s ease;
+    [data-testid="stCameraInput"] button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 26px rgba(255, 107, 107, 0.5) !important;
     }
-    .app-card:hover .app-link {
-        gap: 0.75rem;
+    [data-testid="stCameraInput"] video { border-radius: 16px !important; }
+
+    /* ═══ TARJETA DE RESULTADO ═══ */
+    .result {
+        background: #ffffff; border-radius: 28px;
+        padding: 2.75rem 2rem 2.25rem 2rem;
+        text-align: center;
+        box-shadow: 0 16px 48px rgba(45, 42, 38, 0.09);
+        margin-top: 1.75rem;
+        position: relative; overflow: hidden;
+    }
+    .result::before {
+        content: ''; position: absolute;
+        top: 0; left: 0; right: 0; height: 6px;
+        background: var(--emotion-color, var(--coral));
+    }
+    .emoji {
+        font-size: 5.5rem; line-height: 1;
+        margin-bottom: 1.25rem; display: block;
+        animation: floaty 2.4s ease-in-out infinite;
+    }
+    @keyframes floaty {
+        0%, 100% { transform: translateY(0) rotate(0deg); }
+        50%      { transform: translateY(-10px) rotate(-3deg); }
+    }
+    .emotion-label {
+        display: inline-block;
+        background: var(--emotion-bg, var(--coral-soft));
+        color: var(--emotion-color, var(--coral));
+        padding: 0.4rem 1.15rem; border-radius: 100px;
+        font-weight: 800; font-size: 0.85rem;
+        letter-spacing: 0.12em; text-transform: uppercase;
+        margin-bottom: 1.1rem;
+    }
+    .greeting {
+        font-family: 'Fraunces', serif !important;
+        font-size: 1.95rem !important; font-weight: 700 !important;
+        color: var(--text) !important;
+        margin: 0 0 0.75rem 0 !important; line-height: 1.15 !important;
+    }
+    .message {
+        color: var(--muted) !important;
+        font-size: 1.02rem !important; line-height: 1.6 !important;
+        max-width: 480px; margin: 0 auto 2rem auto; font-weight: 500;
+    }
+    .conf-label {
+        display: flex; justify-content: space-between; align-items: baseline;
+        font-size: 0.72rem; font-weight: 800;
+        letter-spacing: 0.14em; text-transform: uppercase;
+        color: var(--muted); margin-bottom: 0.55rem;
+    }
+    .conf-label span:last-child {
+        font-family: 'Fraunces', serif;
+        font-size: 1.35rem; letter-spacing: -0.02em;
+        color: var(--emotion-color, var(--coral));
+        text-transform: none; font-weight: 700;
+    }
+    .conf-track {
+        height: 10px; background: #f5ede1;
+        border-radius: 100px; overflow: hidden;
+    }
+    .conf-fill {
+        height: 100%; border-radius: 100px;
+        background: linear-gradient(90deg, var(--emotion-color, var(--coral)), var(--emotion-color-2, #ff8e53));
+        transition: width 0.6s cubic-bezier(.4,0,.2,1);
     }
 
-    /* ═══ FOOTER ═══ */
-    .footer {
-        text-align: center;
-        padding: 3rem 0 1rem 0;
-        border-top: 1px solid var(--border);
-        margin-top: 4rem;
+    /* ═══ DISTRIBUCIÓN DE PROBABILIDADES ═══ */
+    .dist-card {
+        background: #ffffff; border-radius: 22px;
+        padding: 1.5rem 1.6rem;
+        box-shadow: 0 8px 28px rgba(45, 42, 38, 0.06);
+        margin-top: 1.5rem;
     }
-    .footer-mark {
-        font-size: 1.5rem;
-        color: var(--accent);
-        margin-bottom: 0.75rem;
-        display: block;
+    .dist-title {
+        font-family: 'Fraunces', serif;
+        font-size: 1.15rem; font-weight: 700;
+        margin: 0 0 1.1rem 0; color: var(--text);
+        display: flex; justify-content: space-between; align-items: center;
     }
-    .footer-text {
-        font-family: 'Instrument Serif', serif;
-        font-size: 1.1rem;
-        font-style: italic;
-        color: var(--ink);
+    .dist-title small {
+        font-family: 'Nunito', sans-serif;
+        font-size: 0.72rem; font-weight: 700;
+        letter-spacing: 0.1em; text-transform: uppercase;
+        color: var(--muted);
+    }
+    .dist-row {
+        display: grid;
+        grid-template-columns: 34px 100px 1fr 52px;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.55rem 0.85rem;
+        border-radius: 12px;
+        transition: background 0.15s ease;
+    }
+    .dist-row.top { background: #fff8ec; }
+    .dist-row .e { font-size: 1.4rem; line-height: 1; }
+    .dist-row .n {
+        font-weight: 700; font-size: 0.9rem;
+        color: var(--text); text-transform: capitalize;
+    }
+    .dist-row .b {
+        height: 8px; background: #f5ede1;
+        border-radius: 100px; overflow: hidden;
+    }
+    .dist-row .b > div {
+        height: 100%; border-radius: 100px;
+        transition: width 0.5s ease;
+    }
+    .dist-row .p {
+        font-family: 'Fraunces', serif;
+        font-size: 1rem; font-weight: 700;
+        text-align: right; color: var(--text);
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* ═══ AVISO ═══ */
+    .warn {
+        background: linear-gradient(135deg, #fff8e1, #fffaf0);
+        border: 1px solid #fde68a;
+        border-left: 4px solid #f59e0b;
+        border-radius: 14px;
+        padding: 1rem 1.15rem;
+        margin-top: 1.2rem;
+        font-size: 0.92rem;
+        color: #7c5f1c !important;
+        line-height: 1.55;
+        font-weight: 600;
+    }
+    .warn b { color: #7c5f1c !important; }
+    .warn em { font-style: italic; color: #a16207 !important; }
+
+    /* ═══ SIDEBAR ═══ */
+    [data-testid="stSidebar"] {
+        background: #ffffff !important;
+        border-right: 1px solid #f2e8dc !important;
+    }
+    [data-testid="stSidebar"] * { color: var(--text) !important; }
+
+    .sb-title {
+        font-family: 'Fraunces', serif;
+        font-size: 1.2rem; font-weight: 700;
         margin: 0 0 0.4rem 0;
     }
-    .footer-sub {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.7rem;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: var(--muted);
-        margin: 0;
+    .sb-text {
+        color: var(--muted) !important;
+        font-size: 0.92rem; line-height: 1.6; font-weight: 500;
     }
 
-    /* Links generales */
-    .stMarkdown a { text-decoration: none !important; }
+    /* ═══ TARJETA DECORATIVA EN SIDEBAR (reemplaza OIG5.jpg) ═══ */
+    .sb-hero-card {
+        background: linear-gradient(135deg, #fff5e6 0%, #ffe5e5 55%, #fef3c7 100%);
+        border-radius: 20px;
+        padding: 1.4rem 1.2rem;
+        text-align: center;
+        margin-bottom: 1.4rem;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid #ffe0b3;
+    }
+    .sb-hero-card::before {
+        content: '';
+        position: absolute;
+        top: -30px; right: -30px;
+        width: 100px; height: 100px;
+        background: radial-gradient(circle, rgba(255, 107, 107, 0.20), transparent 70%);
+        border-radius: 50%;
+    }
+    .sb-hero-card .camera {
+        font-size: 2.8rem;
+        line-height: 1;
+        display: block;
+        margin-bottom: 0.5rem;
+        filter: drop-shadow(0 4px 12px rgba(255, 107, 107, 0.35));
+    }
+    .sb-hero-card .tagline {
+        font-family: 'Fraunces', serif;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--text);
+        letter-spacing: -0.01em;
+        line-height: 1.2;
+    }
+    .sb-hero-card .sub {
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #b8854a;
+        margin-top: 0.45rem;
+    }
 
-    /* Responsive */
-    @media (max-width: 768px) {
-        .hero-title { font-size: 2.3rem !important; }
-        .section-title { font-size: 1.6rem !important; }
-        .app-title { font-size: 1.25rem !important; }
-        .block-container { padding-top: 1.5rem !important; }
+    /* ═══ GRID DE EMOCIONES EN SIDEBAR ═══ */
+    .sb-emo-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+        margin-top: 1rem;
+    }
+    .sb-emo {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0.75rem 0.5rem;
+        background: #fef9f3;
+        border-radius: 12px;
+        border: 1px solid #f7ecdc;
+        transition: all 0.15s ease;
+    }
+    .sb-emo:hover {
+        background: #fff4e6;
+        border-color: #ffe0b3;
+        transform: translateY(-2px);
+    }
+    .sb-emo .face { font-size: 1.8rem; line-height: 1; margin-bottom: 0.35rem; }
+    .sb-emo .name {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--text);
+        text-transform: capitalize;
+    }
+
+    /* ═══ TIPS EN SIDEBAR ═══ */
+    .sb-tip {
+        background: linear-gradient(135deg, #fff5e6, #fff);
+        border: 1px solid #ffe4b8;
+        border-radius: 14px;
+        padding: 1rem 1.05rem;
+        font-size: 0.86rem;
+        color: #8a6d3b !important;
+        line-height: 1.55;
+        margin-top: 1.2rem;
+        font-weight: 500;
+    }
+    .sb-tip .h {
+        display: block;
+        font-weight: 800;
+        color: #7c5f1c !important;
+        margin-bottom: 0.5rem;
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    .sb-tip ul {
+        margin: 0;
+        padding-left: 1.1rem;
+    }
+    .sb-tip li {
+        margin-bottom: 0.35rem;
+        color: #8a6d3b !important;
+    }
+    .sb-tip b { color: #7c5f1c !important; font-weight: 800; }
+
+    /* ═══ EXPANDER ═══ */
+    [data-testid="stExpander"] {
+        background: #ffffff !important;
+        border: 1px solid #f2e8dc !important;
+        border-radius: 16px !important;
+        overflow: hidden;
+    }
+    [data-testid="stExpander"] summary {
+        font-weight: 700 !important;
+        color: var(--text) !important;
+        padding: 0.85rem 1rem !important;
+    }
+    [data-testid="stExpander"] summary:hover { color: var(--coral) !important; }
+
+    /* ═══ ALERTAS / SPINNER / HR / CAPTION ═══ */
+    [data-testid="stAlert"] { border-radius: 14px !important; border: none !important; }
+    .stSpinner > div { border-top-color: var(--coral) !important; }
+    hr { border-color: #f2e8dc !important; margin: 2rem 0 1rem 0 !important; }
+    .stCaption, [data-testid="stCaptionContainer"] {
+        color: var(--muted) !important;
+        font-size: 0.82rem !important;
+        text-align: center; font-weight: 500;
+    }
+
+    /* ═══ SCROLLBAR ═══ */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: #fef9f3; }
+    ::-webkit-scrollbar-thumb {
+        background: #ffd6a5; border-radius: 10px;
+        border: 2px solid #fef9f3;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--coral); }
+
+    @media (max-width: 640px) {
+        .hero h1 { font-size: 2.2rem !important; }
+        .emoji { font-size: 4rem; }
+        .greeting { font-size: 1.5rem !important; }
+        .dist-row { grid-template-columns: 30px 80px 1fr 44px; gap: 0.5rem; }
     }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════
-# HELPERS
+# CARGA DEL MODELO
 # ═══════════════════════════════════════════════════════════════
-@st.cache_data
-def img_to_b64(path):
-    """Convierte una imagen a base64 para incrustarla en HTML."""
-    try:
-        img = Image.open(path)
-        buf = io.BytesIO()
-        img.save(buf, format='PNG')
-        return base64.b64encode(buf.getvalue()).decode()
-    except Exception:
-        return None
+@st.cache_resource
+def cargar_modelo():
+    return load_model('keras_model.h5')
 
-
-def section_header(num, title, subtitle):
-    st.markdown(f"""
-        <div class="section-head">
-            <div class="section-num">{num}</div>
-            <div>
-                <h2 class="section-title">{title}</h2>
-                <p class="section-sub">{subtitle}</p>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-
-def app_card(image_path, tag, title, desc, url):
-    b64 = img_to_b64(image_path)
-    if b64:
-        image_html = f'<img src="data:image/png;base64,{b64}" alt="{title}" />'
-    else:
-        image_html = '<div style="font-size:3rem;">🖼️</div>'
-    return f"""
-        <a href="{url}" target="_blank" class="app-card">
-            <div class="app-card-image">{image_html}</div>
-            <div class="app-card-body">
-                <span class="app-tag">{tag}</span>
-                <h3 class="app-title">{title}</h3>
-                <p class="app-desc">{desc}</p>
-                <span class="app-link">Abrir aplicación →</span>
-            </div>
-        </a>
-    """
+try:
+    model = cargar_modelo()
+except Exception as e:
+    st.error(f"❌ No se pudo cargar el modelo: {e}")
+    st.stop()
 
 
 # ═══════════════════════════════════════════════════════════════
-# HERO — ILUSTRACIÓN + PRESENTACIÓN
+# ETIQUETAS DE CLASE
 # ═══════════════════════════════════════════════════════════════
-col_left, col_right = st.columns([1, 1.7], gap="large")
+try:
+    with open('labels.txt', 'r', encoding='utf-8') as f:
+        labels = []
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(' ', 1)
+            if len(parts) == 2 and parts[0].isdigit():
+                labels.append(parts[1].strip())
+            else:
+                labels.append(line)
+except FileNotFoundError:
+    labels = ['Feliz', 'Triste', 'Sorprendido', 'Nada', 'Enojado']
 
-with col_left:
-    b64 = img_to_b64('yo.png')
-    if b64:
-        st.markdown(f"""
-            <div class="portrait-wrap">
-                <div class="portrait-frame">
-                    <img src="data:image/png;base64,{b64}" alt="Ilustración de perfil" />
-                </div>
-                <div class="portrait-caption">Diseño interactivo · 2026</div>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-            <div class="portrait-wrap">
-                <div class="portrait-frame">
-                    <div class="portrait-fallback">👋</div>
-                </div>
-                <div class="portrait-caption">Diseño interactivo · 2026</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-with col_right:
-    st.markdown("""
-        <div class="hero-kicker">Portafolio · 2026</div>
-        <h1 class="hero-title">Hola, soy estudiante de <em>Diseño Interactivo</em></h1>
-        <p class="hero-desc">
-            Tengo <strong>20 años</strong> y estudio en <strong>EAFIT</strong>. Este portafolio reúne
-            los proyectos que desarrollé en la materia de <strong>Interfaces Multimodales</strong>
-            del 2026, donde exploramos cómo la inteligencia artificial puede extender nuestros
-            sentidos y crear nuevas formas de interacción.
-        </p>
-        <div class="chips">
-            <span class="chip">🎓 EAFIT</span>
-            <span class="chip">🎨 Diseño Interactivo</span>
-            <span class="chip">📅 20 años</span>
-            <span class="chip">✨ Interfaces Multimodales 2026</span>
-        </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+while len(labels) < 5:
+    labels.append(f"Clase {len(labels)}")
 
 
 # ═══════════════════════════════════════════════════════════════
-# SECCIÓN 01 · VISTA ARTIFICIAL
+# EXCLUIR LA CATEGORÍA "ENOJADO" (y variantes)
 # ═══════════════════════════════════════════════════════════════
-section_header(
-    "01",
-    "Vista artificial",
-    "Modelos que interpretan imágenes y entienden lo que ven",
-)
+EXCLUDE_KEYWORDS = ('enojad', 'angry', 'enojo', 'ira', 'furia', 'rage')
 
-c1, c2, c3 = st.columns(3, gap="medium")
-with c1:
-    st.markdown(app_card(
-        'OCD.PNG',
-        'OCR · Texto en imágenes',
-        'Lector de texto',
-        'Detecta y extrae automáticamente el texto presente en cualquier imagen.',
-        'https://reconocertextojplg-6juwyccehm7tzvrc4olrgc.streamlit.app/#lector-de-texto'
-    ), unsafe_allow_html=True)
-with c2:
-    st.markdown(app_card(
-        'DetectorYolo.PNG',
-        'Objetos · YOLOv5',
-        'Detector de objetos',
-        'Identifica objetos del mundo físico en tiempo real usando el modelo YOLOv5.',
-        'https://yolov5jplg-jhz4oyznamsgwqesdqsjur.streamlit.app/#deteccion-de-objetos'
-    ), unsafe_allow_html=True)
-with c3:
-    st.markdown(app_card(
-        'DetectorTM.PNG',
-        'Emociones · Teachable Machine',
-        'Detector de emociones',
-        'Reconoce expresiones faciales entrenadas con Teachable Machine.',
-        'https://tmjplg-mb3ejw24ybs3q9me8rjvnv.streamlit.app/'
-    ), unsafe_allow_html=True)
+def es_excluida(nombre):
+    n = nombre.strip().lower()
+    return any(k in n for k in EXCLUDE_KEYWORDS)
+
+# Índices válidos = los que NO corresponden a la categoría excluida
+valid_indices = [i for i, lbl in enumerate(labels) if not es_excluida(lbl)]
+if not valid_indices:
+    valid_indices = list(range(len(labels)))
 
 
 # ═══════════════════════════════════════════════════════════════
-# SECCIÓN 02 · LENGUAJE Y SIGNIFICADO
+# METADATOS DE CADA EMOCIÓN (sin "enojado")
 # ═══════════════════════════════════════════════════════════════
-section_header(
-    "02",
-    "Lenguaje y significado",
-    "Cómo la IA lee, interpreta y visualiza el texto",
-)
-
-c1, c2, c3 = st.columns(3, gap="medium")
-with c1:
-    st.markdown(app_card(
-        'AnalisisSentimiento.PNG',
-        'NLP · Sentimiento',
-        'Analizador de sentimientos',
-        'Analiza la polaridad y subjetividad de cualquier frase en español.',
-        'https://2mlysjdw4svsaudjglrkzt.streamlit.app/'
-    ), unsafe_allow_html=True)
-with c2:
-    st.markdown(app_card(
-        'TF.PNG',
-        'Búsqueda · TF-IDF',
-        'Recuperación de información',
-        'Encuentra el documento más relevante a partir de una pregunta en lenguaje natural.',
-        'https://tf-idf-jplg-pufez8g8jqz82ru5wbvp5e.streamlit.app/'
-    ), unsafe_allow_html=True)
-with c3:
-    st.markdown(app_card(
-        'Wordcloud.PNG',
-        'Visual · Nube de palabras',
-        'Nube de palabras',
-        'Genera representaciones visuales del texto destacando las palabras más frecuentes.',
-        'https://vision2-gpt4o.streamlit.app/'
-    ), unsafe_allow_html=True)
+EMOTIONS = {
+    'feliz': {
+        'emoji': '😊', 'label': 'Feliz', 'greeting': '¡Hola! 😊',
+        'message': '¡Qué alegría verte tan feliz! Contagia esa buena energía a todos los que te rodean.',
+        'color': '#f59e0b', 'color2': '#fbbf24', 'bg': '#fef3c7',
+    },
+    'triste': {
+        'emoji': '😢', 'label': 'Triste', 'greeting': 'Hola...',
+        'message': 'Te noto triste. Recuerda que los días grises también pasan. ¡Un abrazo y ánimo!',
+        'color': '#3b82f6', 'color2': '#60a5fa', 'bg': '#dbeafe',
+    },
+    'sorprendido': {
+        'emoji': '😲', 'label': 'Sorprendido', 'greeting': '¡Hola!',
+        'message': '¡Vaya, qué cara de sorpresa! ¿Qué ha pasado? Cuéntame esa gran noticia.',
+        'color': '#8b5cf6', 'color2': '#a78bfa', 'bg': '#ede9fe',
+    },
+    'nada': {
+        'emoji': '😐', 'label': 'Sin emoción clara', 'greeting': 'Hola',
+        'message': 'No detecto una emoción marcada en tu rostro. Intenta exagerar tu expresión y vuelve a probar.',
+        'color': '#94a3b8', 'color2': '#cbd5e1', 'bg': '#f1f5f9',
+    },
+    'neutral': {
+        'emoji': '😐', 'label': 'Neutral', 'greeting': 'Hola',
+        'message': 'Tu rostro se ve tranquilo y neutral. Todo en calma por aquí.',
+        'color': '#94a3b8', 'color2': '#cbd5e1', 'bg': '#f1f5f9',
+    },
+}
 
 
-# ═══════════════════════════════════════════════════════════════
-# SECCIÓN 03 · VOZ Y SONIDO
-# ═══════════════════════════════════════════════════════════════
-section_header(
-    "03",
-    "Voz y sonido",
-    "Interfaces que escuchan, hablan y traducen",
-)
+def obtener_info_emocion(nombre):
+    key = nombre.strip().lower()
+    for k, v in EMOTIONS.items():
+        if k in key or key in k:
+            return v
+    return EMOTIONS['nada']
 
-c1, c2, c3 = st.columns(3, gap="medium")
-with c1:
-    st.markdown(app_card(
-        'Voxlab.PNG',
-        'Voz · Texto a voz',
-        'Texto a voz',
-        'Convierte cualquier texto escrito en audio con voz natural.',
-        'https://imm1copiajplg-zdpnlzjgnlatk4cbll7wlj.streamlit.app/'
-    ), unsafe_allow_html=True)
-with c2:
-    st.markdown(app_card(
-        'VoxTranslate.PNG',
-        'Voz · Voz a texto',
-        'Voz a texto',
-        'Escucha lo que dices, lo traduce y lo convierte en texto.',
-        'https://traductorjplg-9zcgnf8wypri8t5yksyfsg.streamlit.app/'
-    ), unsafe_allow_html=True)
-with c3:
-    st.markdown(app_card(
-        'OCRTraductor.PNG',
-        'OCR + Traducción + Audio',
-        'OCR + texto a audio',
-        'Detecta texto en imágenes, lo traduce y genera audio en una sola app.',
-        'https://traductorextranjeros-jk7eekmjpdskckeba6x8mk.streamlit.app/'
-    ), unsafe_allow_html=True)
+
+def color_de_emocion(nombre):
+    return obtener_info_emocion(nombre)['color']
 
 
 # ═══════════════════════════════════════════════════════════════
-# SECCIÓN 04 · PRIMER PROYECTO
-# ═══════════════════════════════════════════════════════════════
-section_header(
-    "04",
-    "El primer paso",
-    "Donde empezó todo este recorrido",
-)
-
-c1, c2, c3 = st.columns([1, 1, 1], gap="medium")
-with c1:
-    st.markdown(app_card(
-        'Primera.PNG',
-        'Origen · Streamlit',
-        'Mi primera página web',
-        'El primer proyecto que me introdujo al mundo de las apps interactivas con Streamlit.',
-        'https://miprimerapagina-5gzdhzssqjm77bzqcehwe5.streamlit.app/'
-    ), unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════
-# FOOTER
+# HERO
 # ═══════════════════════════════════════════════════════════════
 st.markdown("""
-    <div class="footer">
-        <span class="footer-mark">✦</span>
-        <p class="footer-text">Hecho con curiosidad desde Medellín</p>
-        <p class="footer-sub">EAFIT · Interfaces Multimodales · 2026</p>
-    </div>
+<div class="hero">
+    <div class="hero-badge">Reconocimiento facial · IA</div>
+    <h1>Detector de <em>emociones</em></h1>
+    <p>Mira a la cámara y descubre qué emoción refleja tu rostro.</p>
+</div>
 """, unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════
+# SIDEBAR
+# ═══════════════════════════════════════════════════════════════
+with st.sidebar:
+    # Tarjeta decorativa (reemplaza OIG5.jpg)
+    st.markdown("""
+        <div class="sb-hero-card">
+            <span class="camera">📷</span>
+            <div class="tagline">Tu rostro,<br>en tiempo real</div>
+            <div class="sub">Modelo · Teachable Machine</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="sb-title">😊 ¿Qué detecta?</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="sb-text">Modelo entrenado en Teachable Machine capaz de reconocer 4 estados de ánimo:</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("""
+        <div class="sb-emo-grid">
+            <div class="sb-emo"><span class="face">😊</span><span class="name">Feliz</span></div>
+            <div class="sb-emo"><span class="face">😢</span><span class="name">Triste</span></div>
+            <div class="sb-emo"><span class="face">😲</span><span class="name">Sorprendido</span></div>
+            <div class="sb-emo"><span class="face">😐</span><span class="name">Sin emoción</span></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+        <div class="sb-tip">
+            <span class="h">✨ Cómo mejorar la detección</span>
+            <ul>
+                <li><b>Exagera</b> la expresión facial, no la hagas sutil.</li>
+                <li>Usa <b>buena iluminación frontal</b>, sin contraluz.</li>
+                <li>Mantén el rostro <b>centrado y cerca</b> de la cámara.</li>
+                <li>Evita gorras, gafas oscuras o mascarillas.</li>
+                <li>Haz la expresión y <b>espera 2 segundos</b> antes de capturar.</li>
+            </ul>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.caption(f"Python {platform.python_version()}")
+
+
+# ═══════════════════════════════════════════════════════════════
+# TIP PROMINENTE ANTES DE LA CÁMARA
+# ═══════════════════════════════════════════════════════════════
+st.markdown("""
+<div class="pro-tip">
+    <div class="icon">💡</div>
+    <div class="body">
+        <div class="title">Exagera tu expresión para mejores resultados</div>
+        <div class="text">
+            El modelo aprende mejor con gestos <b>marcados</b>. Si quieres aparecer
+            <b>feliz</b>, sonríe ampliamente mostrando los dientes. Si estás <b>sorprendido</b>,
+            abre bien los ojos y la boca. Las expresiones sutiles suelen clasificarse como
+            <b>"sin emoción"</b>.
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════
+# CÁMARA
+# ═══════════════════════════════════════════════════════════════
+img_file_buffer = st.camera_input("Toma una foto")
+
+
+# ═══════════════════════════════════════════════════════════════
+# PREDICCIÓN Y RESULTADO
+# ═══════════════════════════════════════════════════════════════
+if img_file_buffer is not None:
+    img = Image.open(img_file_buffer)
+    img = img.resize((224, 224))
+    img_array = np.array(img)
+    normalized = (img_array.astype(np.float32) / 127.0) - 1
+
+    data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+    data[0] = normalized
+
+    with st.spinner("Analizando tu rostro..."):
+        prediction = model.predict(data)
+
+    probs = prediction[0]
+
+    # ── Enmascaramos la clase excluida (enojado) ──
+    masked = probs.copy()
+    for i in range(len(masked)):
+        if i not in valid_indices:
+            masked[i] = -1.0
+
+    idx = int(np.argmax(masked))
+    conf = float(probs[idx])
+    detected_label = labels[idx] if idx < len(labels) else "Nada"
+    info = obtener_info_emocion(detected_label)
+    pct = min(100, int(conf * 100))
+
+    # ── Tarjeta principal ──
+    st.markdown(f"""
+        <div class="result" style="
+            --emotion-color: {info['color']};
+            --emotion-color-2: {info['color2']};
+            --emotion-bg: {info['bg']};
+        ">
+            <span class="emoji">{info['emoji']}</span>
+            <div class="emotion-label">{info['label']}</div>
+            <div class="greeting">{info['greeting']}</div>
+            <p class="message">{info['message']}</p>
+            <div class="conf-label">
+                <span>Confianza</span>
+                <span>{pct}%</span>
+            </div>
+            <div class="conf-track">
+                <div class="conf-fill" style="width: {pct}%;"></div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # ── Barras con las probabilidades (excluyendo enojado) ──
+    orden = [i for i in np.argsort(probs)[::-1] if i in valid_indices]
+    rows_html = ""
+    for pos, real_idx in enumerate(orden):
+        lbl = labels[real_idx] if real_idx < len(labels) else f"Clase {real_idx}"
+        p = float(probs[real_idx])
+        ppct = p * 100
+        emoji_e = obtener_info_emocion(lbl)['emoji']
+        color_e = color_de_emocion(lbl)
+        top_class = " top" if pos == 0 else ""
+        rows_html += f"""
+            <div class="dist-row{top_class}">
+                <div class="e">{emoji_e}</div>
+                <div class="n">{lbl}</div>
+                <div class="b"><div style="width:{ppct}%; background:{color_e};"></div></div>
+                <div class="p">{ppct:.1f}%</div>
+            </div>
+        """
+
+    st.markdown(f"""
+        <div class="dist-card">
+            <div class="dist-title">
+                Distribución de probabilidades
+                <small>ordenado de mayor a menor</small>
+            </div>
+            {rows_html}
+        </div>
+    """, unsafe_allow_html=True)
+
+    # ── Aviso si la decisión no es clara ──
+    valid_probs = np.array([probs[i] for i in valid_indices])
+    sorted_valid = np.sort(valid_probs)[::-1]
+    if len(sorted_valid) >= 2:
+        gap = sorted_valid[0] - sorted_valid[1]
+        if conf < 0.5 or gap < 0.15:
+            top1 = labels[orden[0]]
+            top2 = labels[orden[1]]
+            st.markdown(f"""
+                <div class="warn">
+                    ⚠️ <b>Resultado poco claro.</b> El modelo duda entre
+                    <em>{top1}</em> y <em>{top2}</em>.
+                    Intenta <b>exagerar más la expresión</b>, mejora la iluminación
+                    o acerca el rostro a la cámara.
+                </div>
+            """, unsafe_allow_html=True)
+
+    # ── Valores crudos ──
+    with st.expander("🔍 Ver valores exactos del modelo"):
+        for i, lbl in enumerate(labels):
+            if i >= len(probs):
+                break
+            p = float(probs[i])
+            excluida = " *(excluida)*" if i not in valid_indices else ""
+            st.markdown(f"**{lbl}**{excluida} — `{p:.6f}`")
+
+
+st.markdown("---")
+st.caption("Modelo entrenado con Teachable Machine · Clasificación de emociones en tiempo real")
